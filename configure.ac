@@ -3735,6 +3735,19 @@ AS_IF([test "${enable_qt}" != "no"], [
 AM_CONDITIONAL(ENABLE_QT4, [test "$enable_qt" != "no"])
 
 dnl
+dnl KDE KIO access plugin
+dnl
+AC_ARG_ENABLE(kio,
+  [  --enable-kio            KDE integration, KIO access plugin (default enabled) ],, [
+])
+AS_IF([test "${enable_kio}" != "no"], [
+    VLC_ADD_PLUGIN([kio])
+    VLC_ADD_LIBS([kio],[-lkio])
+])
+AM_CONDITIONAL(ENABLE_KIO, [test "x$enable_kio" != "xno"])
+
+
+dnl
 dnl Simple test for skins2 dependency
 dnl
 AS_IF([test "$enable_qt" = "no"], [
@@ -4192,6 +4205,7 @@ AC_CONFIG_FILES([
   bin/Makefile
   test/Makefile
   modules/access/Makefile
+  modules/access/kio/Makefile
   modules/access/rtp/Makefile
   modules/access_output/Makefile
   modules/audio_filter/Makefile
