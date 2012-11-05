@@ -31,10 +31,12 @@ class KioPlugin : public QObject
 {
     Q_OBJECT
 
-public:
+public slots:
     void handleResult(KJob *job);
     void handleData(KJob *job, const QByteArray &data);
     void handlePosition(KJob *job, KIO::filesize_t pos);
+    
+    void requestData();
     
     QByteArray m_data;
     KIO::filesize_t m_pos;

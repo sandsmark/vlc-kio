@@ -20,10 +20,10 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+// Generic includes
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif
-
 
 // VLC includes
 #include <vlc_common.h>
@@ -117,12 +117,47 @@ static int Seek(access_t *obj, uint64_t pos)
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
     sys->job->seek(pos);
+    
+    return VLC_SUCCESS;
 }
 
 static int Control(access_t *obj, int query, va_list arguments)
 {
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
+    
+    Q_UNUSED(sys);
+    
+    bool *b = (bool*)va_arg(arguments, bool*);
+    int64_t *i = (int64_t*)va_arg(arguments, int64_t *);
+
+    switch(query) {
+        case ACCESS_CAN_SEEK:
+        case ACCESS_CAN_PAUSE:
+            *b = true;
+            break;
+        case ACCESS_CAN_CONTROL_PACE:
+        case ACCESS_CAN_FASTSEEK:
+            *b = false;
+            break;
+        case ACCESS_GET_PTS_DELAY:
+            *i = 300000;//###
+            break;
+        case ACCESS_GET_TITLE_INFO:
+        case ACCESS_GET_META:
+        case ACCESS_GET_CONTENT_TYPE:
+        case ACCESS_GET_SIGNAL:
+            return VLC_EGENERIC;
+        case ACCESS_SET_PAUSE_STATE:
+        case ACCESS_SET_TITLE:
+        case ACCESS_SET_SEEKPOINT:
+            break;
+        default:
+            qWarning() << "unimplemented query:" << query;
+            return VLC_EGENERIC;
+
+    }
+    return VLC_SUCCESS;
 }
 
 static block_t *Block(access_t *obj)
@@ -132,6 +167,8 @@ static block_t *Block(access_t *obj)
     
     if (sys->plugin.m_eof) {
         intf->info.b_eof = true;
+    } else {
+        sys->job->read(32768);
     }
     
     const QByteArray &buffer = sys->plugin.m_data;
@@ -146,16 +183,19 @@ static block_t *Block(access_t *obj)
 
 void KioPlugin::handleData(KJob* job, const QByteArray& data)
 {
+    Q_UNUSED(job);
     m_data.append(data);
 }
 
 void KioPlugin::handlePosition(KJob* job, KIO::filesize_t pos)
 {
+    Q_UNUSED(job);
     m_pos = pos;
 }
 
 void KioPlugin::handleResult(KJob* job)
 {
+    Q_UNUSED(job);
     m_eof = true;
 }
 
