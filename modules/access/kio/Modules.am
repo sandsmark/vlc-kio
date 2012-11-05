@@ -1,6 +1,7 @@
 SUFFIXES = .h .cpp .moc
 SOURCES_access_kio = \
         kioplugin.cpp \
+        kioplugin.moc \
         $(NULL)
 
 libvlc_LTLIBRARIES += libaccess_kio_plugin.la
