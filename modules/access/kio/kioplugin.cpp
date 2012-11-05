@@ -12,14 +12,11 @@
 #include <kio/filejob.h>
 #include <kio/job.h>
 
-/* Own include */
-#include "kiomediastream.h"
-
 /* Forward declarations */
 static int Open(vlc_object_t *);
 static void Close(vlc_object_t *);
 static int Control(access_t *, int i_query, va_list args);
-static block_t Block(access_t *);
+static block_t *Block(access_t *);
 
 /* Module descriptor */
 vlc_module_begin()
@@ -34,7 +31,7 @@ vlc_module_end ()
 /* Internal state for an instance of the module */
 struct intf_sys_t
 {
-    KioMediaStream *instance = 0;
+    KIO::Job *job = 0;
 };
 
 /**
@@ -50,7 +47,6 @@ static int Open(vlc_object_t *obj)
         return VLC_ENOMEM;
     intf->p_sys = sys;
 
-    msg_Info(intf, "lol kio!", who);
     return VLC_SUCCESS;
 
 error:
@@ -69,7 +65,7 @@ static void Close(vlc_object_t *obj)
     msg_Info(intf, "Good bye %s!");
 
     /* Free internal state */
-    free(sys->who);
+    free(sys->job);
     free(sys);
 }
 

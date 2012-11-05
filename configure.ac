@@ -1738,6 +1738,21 @@ dnl  OpenCV wrapper and example filters
 dnl
 PKG_ENABLE_MODULES_VLC([OPENCV], [opencv_example opencv_wrapper], [opencv > 2.0], (OpenCV (computer vision) filter), [auto])
 
+dnl
+dnl KDE KIO access plugin
+dnl
+AC_ARG_ENABLE(kio,
+  [  --enable-kio            KDE integration, KIO access plugin (default enabled) ],, [
+])
+
+AS_IF([test "${enable_kio}" != "no"], [
+  PKG_CHECK_MODULES(QT4, [QtCore QtGui >= 4.6.0], [
+    VLC_ADD_CXXFLAGS([access_kio],[-I/usr/include/qt4])
+    VLC_ADD_PLUGIN([access_kio])
+    VLC_ADD_LIBS([access_kio],[-lkio])
+  ])
+])
+AM_CONDITIONAL(ENABLE_KIO, [test "x$enable_kio" != "xno"])
 
 dnl
 dnl  libsmbclient plugin
@@ -3733,18 +3748,6 @@ AS_IF([test "${enable_qt}" != "no"], [
   AC_PATH_PROGS(UIC, [uic-qt4 uic], uic, [${QT_PATH}/bin ${CONTRIB_DIR}/bin])
 ])
 AM_CONDITIONAL(ENABLE_QT4, [test "$enable_qt" != "no"])
-
-dnl
-dnl KDE KIO access plugin
-dnl
-AC_ARG_ENABLE(kio,
-  [  --enable-kio            KDE integration, KIO access plugin (default enabled) ],, [
-])
-AS_IF([test "${enable_kio}" != "no"], [
-    VLC_ADD_PLUGIN([kio])
-    VLC_ADD_LIBS([kio],[-lkio])
-])
-AM_CONDITIONAL(ENABLE_KIO, [test "x$enable_kio" != "xno"])
 
 
 dnl
