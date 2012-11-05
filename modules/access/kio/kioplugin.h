@@ -25,6 +25,7 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QByteArray>
+#include <QtCore/QMutex>
 #include <kio/global.h>
 
 class KioPlugin : public QObject
@@ -38,6 +39,7 @@ public slots:
     
     void requestData();
     
+    QMutex m_mutex;
     QByteArray m_data;
     KIO::filesize_t m_pos;
     bool m_eof;

@@ -35,6 +35,7 @@
 // Qt includes
 #include <QtCore/QUrl>
 #include <QtCore/QDebug>
+#include <QtCore/QMutexLocker>
 
 // KDE includes
 #include <kio/job.h>
@@ -165,6 +166,8 @@ static block_t *Block(access_t *obj)
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
     
+    QMutexLocker locker(&sys->plugin.m_mutex);
+
     if (sys->plugin.m_eof) {
         intf->info.b_eof = true;
     } else {
@@ -183,6 +186,7 @@ static block_t *Block(access_t *obj)
 
 void KioPlugin::handleData(KJob* job, const QByteArray& data)
 {
+    QMutexLocker locker(&m_mutex);
     Q_UNUSED(job);
     m_data.append(data);
 }
