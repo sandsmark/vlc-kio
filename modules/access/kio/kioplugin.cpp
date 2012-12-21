@@ -20,6 +20,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+#include "kioplugin.h"
 // Generic includes
 #ifdef HAVE_CONFIG_H
 # include "config.h"
@@ -30,7 +31,6 @@
 #include <vlc_plugin.h>
 #include <vlc_interface.h>
 #include <vlc_access.h>
-#include "kioplugin.h"
 
 // Qt includes
 #include <QtCore/QUrl>
@@ -41,6 +41,7 @@
 #include <kio/job.h>
 #include <kio/filejob.h>
 #include <kprotocolmanager.h>
+#include <QtGui/QApplication>
 
 // Forward declarations
 static int Open(vlc_object_t *);
@@ -76,12 +77,13 @@ static int Open(vlc_object_t *obj)
     access->pf_seek = Seek;
     access->pf_read = 0;
     access_sys_t *d = access->p_sys = new access_sys_t;
+    QMutexLocker locker(&d->plugin.m_mutex);
+    d->plugin.moveToThread(&d->plugin.m_thread);
+    
     
     // Construct a proper URL
-    QUrl url(QString::fromLocal8Bit(access->psz_location));
-    QString scheme = QString::fromLocal8Bit(access->psz_access);
-    if (scheme != "kio")
-        url.setScheme(scheme);
+    qDebug() << access->psz_location << access->psz_access;
+    QUrl url(QString::fromLocal8Bit(access->psz_access) + QLatin1String("://") + QString::fromLocal8Bit(access->psz_location));
     
     qDebug() << "Opening URL: " << url;
     
@@ -91,13 +93,8 @@ static int Open(vlc_object_t *obj)
         delete d;
         return VLC_EGENERIC;
     }
-    
-    d->job = KIO::open(url, QIODevice::ReadOnly);
-    QObject::connect(d->job, SIGNAL(result(KIO::Job*)), &d->plugin, SLOT(handleResult(KIO::Job*)));
-    QObject::connect(d->job, SIGNAL(data(KIO::Job*, const QByteArray&)), &d->plugin, SLOT(handleData(KIO::Job*, const QByteArray&)));
-    QObject::connect(d->job, SIGNAL(position(KIO::Job*, KIO::filesize_t)), &d->plugin, SLOT(handlePostion(KIO::Job*, KIO::filesize_t)));
-    
-    d->job->addMetaData("UserAgent", QLatin1String("VLC KIO Plugin"));
+    QMetaObject::invokeMethod(&d->plugin, "openUrl", Q_ARG(const QUrl&, url), Q_ARG(void*, (void*)d));
+    qDebug() << "invoked";
     
     return VLC_SUCCESS;
 }
@@ -109,6 +106,7 @@ static void Close(vlc_object_t *obj)
 {
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
+    QMutexLocker locker(&sys->plugin.m_mutex);
 
     /* Free internal state */
     delete sys;
@@ -116,8 +114,11 @@ static void Close(vlc_object_t *obj)
 
 static int Seek(access_t *obj, uint64_t pos)
 {
+    
+    qDebug() << "seeking to" << pos;
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
+    QMutexLocker locker(&sys->plugin.m_mutex);
     sys->job->seek(pos);
     
     return VLC_SUCCESS;
@@ -125,8 +126,11 @@ static int Seek(access_t *obj, uint64_t pos)
 
 static int Control(access_t *obj, int query, va_list arguments)
 {
+    qDebug() << "control query:" << query;
+    
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
+    QMutexLocker locker(&sys->plugin.m_mutex);
     
     Q_UNUSED(sys);
     
@@ -164,10 +168,12 @@ static int Control(access_t *obj, int query, va_list arguments)
 
 static block_t *Block(access_t *obj)
 {
+    
+    qDebug() << "getting block...";
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
-    
     QMutexLocker locker(&sys->plugin.m_mutex);
+    
 
     if (sys->plugin.m_eof) {
         intf->info.b_eof = true;
@@ -185,22 +191,52 @@ static block_t *Block(access_t *obj)
     return block;
 }
 
-void KioPlugin::handleData(KJob* job, const QByteArray& data)
+void KioPlugin::handleData(KIO::Job* job, const QByteArray& data)
 {
+    qDebug() << "getting data..." << data.size();
+    
     QMutexLocker locker(&m_mutex);
     Q_UNUSED(job);
     m_data.append(data);
 }
 
-void KioPlugin::handlePosition(KJob* job, KIO::filesize_t pos)
+void KioPlugin::handlePosition(KIO::Job* job, KIO::filesize_t pos)
 {
+    qDebug() << "handling pos:" << pos;
     Q_UNUSED(job);
     m_pos = pos;
 }
 
 void KioPlugin::handleResult(KJob* job)
 {
+    qDebug() << "got end";
     Q_UNUSED(job);
     m_eof = true;
+}
+
+KioPlugin::KioPlugin(): QObject()
+{
+    moveToThread(&m_thread);
+}
+
+void KioPlugin::openUrl(const QUrl& url, void* lol)
+{
+    qDebug() << Q_FUNC_INFO << url;
+    access_sys_t *d = reinterpret_cast<access_sys_t*>(lol);
+    d->job = KIO::open(url, QIODevice::ReadOnly);
+    QObject::connect(d->job, SIGNAL(result(KJob*)), this, SLOT(handleResult(KJob*)));
+    QObject::connect(d->job, SIGNAL(data(KIO::Job*, const QByteArray&)), this, SLOT(handleData(KIO::Job*, const QByteArray&)));
+    QObject::connect(d->job, SIGNAL(position(KIO::Job*, KIO::filesize_t)), this, SLOT(handlePostion(KIO::Job*, KIO::filesize_t)));
+    QObject::connect(d->job, SIGNAL(open(KIO::Job*)), this, SLOT(handleOpen(KIO::Job*)));
+    
+    d->job->addMetaData("UserAgent", QLatin1String("VLC KIO Plugin"));
+    qDebug() << "returning";
+    qApp->processEvents();
+}
+
+void KioPlugin::handleOpen(KJob* job)
+{
+    qDebug() << "open!";
+    m_open.release(1);
 }
 

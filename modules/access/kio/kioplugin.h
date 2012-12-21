@@ -25,24 +25,32 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QByteArray>
+#include <QtCore/QThread>
 #include <QtCore/QMutex>
+#include <QtCore/QSemaphore>
 #include <kio/global.h>
-
+#include <kio/job.h>
+struct access_sys_t;
 class KioPlugin : public QObject
 {
     Q_OBJECT
-
+public:
+    KioPlugin();
+    
 public slots:
+    void openUrl(const QUrl &url, void *d);
     void handleResult(KJob *job);
-    void handleData(KJob *job, const QByteArray &data);
-    void handlePosition(KJob *job, KIO::filesize_t pos);
+    void handleOpen(KJob *job);
+    void handleData(KIO::Job *job, const QByteArray &data);
+    void handlePosition(KIO::Job *job, KIO::filesize_t pos);
 
 public:
-
     QMutex m_mutex;
+    QSemaphore m_open;
     QByteArray m_data;
     KIO::filesize_t m_pos;
     bool m_eof;
+    QThread m_thread;
 };
 
 #endif
