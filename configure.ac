@@ -1744,7 +1744,7 @@ dnl
 
 VLC_ADD_CXXFLAGS([access_kio],[-I/usr/include/qt4])
 VLC_ADD_PLUGIN([access_kio])
-VLC_ADD_LIBS([access_kio],[-lkio -lQtCore])
+VLC_ADD_LIBS([access_kio],[-lkio -lQtCore -lkdecore])
 
 dnl
 dnl  libsmbclient plugin

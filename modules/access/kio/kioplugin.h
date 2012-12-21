@@ -37,8 +37,6 @@ public slots:
     void handleData(KJob *job, const QByteArray &data);
     void handlePosition(KJob *job, KIO::filesize_t pos);
 
-    void requestData();
-
 public:
 
     QMutex m_mutex;

@@ -4,7 +4,7 @@ libaccess_kio_plugin_la_SOURCES= \
 	kioplugin.moc.cpp \
 	$(NULL)
 
-libaccess_kio_plugin_la_LDFLAGS=-lQtCore
+libaccess_kio_plugin_la_LDFLAGS=-lQtCore -lkdecore -lkio
 
 kioplugin.moc.cpp:
 	$(MOC) $(DEFS) -I$(top_srcdir)/include -I$(top_builddir)/include -I$(top_builddir) $(CPPFLAGS_qt4) -o $@ kioplugin.h

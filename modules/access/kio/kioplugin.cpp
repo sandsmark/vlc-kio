@@ -53,10 +53,11 @@ static int Seek(access_t *obj, uint64_t pos);
 vlc_module_begin()
     set_shortname(N_("KIO"))
     set_description(N_("KIO access module"))
-    set_capability("access", 60)
+    set_capability("access", 600)
     set_callbacks(Open, Close)
     set_category(CAT_INPUT)
     set_subcategory(SUBCAT_INPUT_ACCESS)
+    add_shortcut("sftp")
 vlc_module_end ()
 
 // Internal state for an instance of the module
