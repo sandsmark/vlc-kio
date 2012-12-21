@@ -1741,18 +1741,10 @@ PKG_ENABLE_MODULES_VLC([OPENCV], [opencv_example opencv_wrapper], [opencv > 2.0]
 dnl
 dnl KDE KIO access plugin
 dnl
-AC_ARG_ENABLE(kio,
-  [  --enable-kio            KDE integration, KIO access plugin (default enabled) ],, [
-])
 
-AS_IF([test "${enable_kio}" != "no"], [
-  PKG_CHECK_MODULES(QT4, [QtCore QtGui >= 4.6.0], [
-    VLC_ADD_CXXFLAGS([access_kio],[-I/usr/include/qt4])
-    VLC_ADD_PLUGIN([access_kio])
-    VLC_ADD_LIBS([access_kio],[-lkio])
-  ])
-])
-AM_CONDITIONAL(ENABLE_KIO, [test "x$enable_kio" != "xno"])
+VLC_ADD_CXXFLAGS([access_kio],[-I/usr/include/qt4])
+VLC_ADD_PLUGIN([access_kio])
+VLC_ADD_LIBS([access_kio],[-lkio -lQtCore])
 
 dnl
 dnl  libsmbclient plugin
