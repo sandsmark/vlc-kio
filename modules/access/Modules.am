@@ -94,6 +94,11 @@ libvlc_LTLIBRARIES += \
         $(NULL)
 endif
 
+SOURCES_access_kio = kio/kioplugin.cpp kio/kioplugin.moc.cpp
+
+kio/kioplugin.moc.cpp:
+	$(MOC) $(DEFS) -I$(top_srcdir)/include -I$(top_builddir)/include -I$(top_builddir) $(CPPFLAGS_qt4) -o $@ kio/kioplugin.h
+
 libvlc_LTLIBRARIES += \
 	libfilesystem_plugin.la \
 	libidummy_plugin.la \
@@ -107,6 +112,7 @@ libvlc_LTLIBRARIES += \
 	libtimecode_plugin.la \
 	libaccess_rar_plugin.la \
 	libstream_filter_rar_plugin.la \
+	libaccess_kio_plugin.la \
 	libaccess_vdr_plugin.la \
 	$(NULL)
 
