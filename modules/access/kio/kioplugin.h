@@ -25,15 +25,11 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QByteArray>
-#include <QtCore/QThread>
 #include <QtCore/QMutex>
-#include <QtCore/QSemaphore>
-#include <QtCore/QDebug>
-#include <kio/global.h>
-#include <kio/job.h>
-#include <kio/filejob.h>
-#include <vlc_common.h>
-struct access_sys_t;
+#include <QtCore/QUrl>
+
+#include <KIO/FileJob>
+
 class KioPlugin : public QObject
 {
     Q_OBJECT
@@ -46,8 +42,8 @@ public slots:
     void handleOpen(KIO::Job *job);
     void handleData(KIO::Job *job, const QByteArray &data);
     void handlePosition(KIO::Job *job, KIO::filesize_t pos);
-    void read(uint64_t amount) { m_job->read(amount); }
-    void seek(uint64_t position);
+    void read(quint64 amount) { m_job->read(amount); }
+    void seek(quint64 position);
 
 public:
     QMutex m_mutex;

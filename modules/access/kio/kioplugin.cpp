@@ -21,6 +21,7 @@
  *****************************************************************************/
 
 #include "kioplugin.h"
+
 // Generic includes
 #ifdef HAVE_CONFIG_H
 # include "config.h"
@@ -38,9 +39,8 @@
 #include <QtCore/QMutexLocker>
 
 // KDE includes
-#include <kio/job.h>
-#include <kio/filejob.h>
-#include <kprotocolmanager.h>
+#include <KIO/Job>
+#include <KProtocolManager>
 #include <QtGui/QApplication>
 
 // Forward declarations
@@ -95,23 +95,29 @@ static void Close(vlc_object_t *obj)
 {
     access_t *intf = (access_t *)obj;
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(intf->p_sys);
+
+    // Stop and delete job
+    kio->m_job->kill();
+
+    // Make sure noone is doing anything
     kio->m_mutex.lock();
-    /* Free internal state */
+
+    // Delete everything
     delete kio;
 }
 
 static int Seek(access_t *obj, uint64_t pos)
 {
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
-    QMetaObject::invokeMethod(kio, "seek", Q_ARG(uint64_t, pos));
+
+    // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
+    QMetaObject::invokeMethod(kio, "seek", Q_ARG(quint64, pos));
     obj->info.b_eof = false;
     return VLC_SUCCESS;
 }
 
-static int Control(access_t *obj, int query, va_list arguments)
+static int Control(access_t*, int query, va_list arguments)
 {
-    KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
-    
     bool *b;
     int64_t *i;
 
@@ -119,7 +125,7 @@ static int Control(access_t *obj, int query, va_list arguments)
         case ACCESS_CAN_SEEK:
         case ACCESS_CAN_PAUSE:
             b = (bool*)va_arg(arguments, bool*);
-            *b = true; // FIXME
+            *b = true;
             break;
         case ACCESS_CAN_CONTROL_PACE:
         case ACCESS_CAN_FASTSEEK:
@@ -128,7 +134,7 @@ static int Control(access_t *obj, int query, va_list arguments)
             break;
         case ACCESS_GET_PTS_DELAY:
             i = (int64_t*)va_arg(arguments, int64_t *);
-            *i = 300000;//###
+            *i = 300000;
             break;
         case ACCESS_GET_TITLE_INFO:
         case ACCESS_GET_META:
@@ -158,9 +164,11 @@ static block_t *Block(access_t *obj)
 
     if (kio->m_eof) {
         obj->info.b_eof = true;
-    } else if (buffer.size() < 32768) {
+    } else if (buffer.size() < 32768) { // Fetch more data if running low
         kio->m_waitingForData = true;
-        QMetaObject::invokeMethod(kio, "read", Q_ARG(uint64_t, 32768));
+
+        // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
+        QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, 32768));
     }
 
     if (buffer.size() == 0)
@@ -197,8 +205,8 @@ void KioPlugin::handleResult(KJob* job)
 
 KioPlugin::KioPlugin(): QObject()
 {
+    // KIO only supports being called from the main Qt thread
     moveToThread(qApp->thread());
-    qRegisterMetaType<uint64_t>("uint64_t");
 }
 
 void KioPlugin::openUrl(const QUrl& url)
@@ -219,11 +227,12 @@ void KioPlugin::handleOpen(KIO::Job* job)
     Q_UNUSED(job);
     m_launched.unlock();
 }
-void KioPlugin::seek(uint64_t position)
+void KioPlugin::seek(quint64 position)
 {
-    QMutexLocker(&m_mutex);
+    QMutexLocker locker(&m_mutex);
+
+    // Discard the current buffer
     m_data.clear();
+
     m_job->seek(position);
 }
-
-Q_DECLARE_METATYPE(uint64_t)
