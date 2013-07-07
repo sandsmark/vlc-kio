@@ -1,7 +1,7 @@
 /*****************************************************************************
  * kioplugin.cpp: An access plugin using KDE KIO.
  *****************************************************************************
- * Copyright (C) 2012 Martin Sandsmark
+ * Copyright (C) 2013 Martin Sandsmark
  *
  * Authors: Martin Sandsmark <martin.sandsmark@kde.org>
  *
@@ -71,24 +71,19 @@ static int Open(vlc_object_t *obj)
     access->pf_read = 0;
     KioPlugin *kio = new KioPlugin;
     access->p_sys = reinterpret_cast<access_sys_t*>(kio);
-    QMutexLocker locker(&kio->m_mutex);
 
     // Construct a proper URL
     QUrl url(QString::fromLocal8Bit(access->psz_access) + QLatin1String("://") + QString::fromLocal8Bit(access->psz_location));
 
-    qDebug() << "Opening URL: " << url;
-
     // Check if we can open it
     if (!KProtocolManager::supportsOpening(url)) {
-        qDebug() << "Unable to open URL.";
+        qWarning() << Q_FUNC_INFO << "Unable to open URL:" << url;
         delete kio;
         return VLC_EGENERIC;
     }
     kio->m_launched.lock();
     QMetaObject::invokeMethod(kio, "openUrl", Q_ARG(const QUrl&, url));
     kio->m_launched.lock();
-
-    qDebug() << "end" << Q_FUNC_INFO;
 
     return VLC_SUCCESS;
 }
@@ -98,33 +93,24 @@ static int Open(vlc_object_t *obj)
  */
 static void Close(vlc_object_t *obj)
 {
-    qDebug() << Q_FUNC_INFO << obj;
     access_t *intf = (access_t *)obj;
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(intf->p_sys);
-    QMutexLocker locker(&kio->m_mutex);
-
+    kio->m_mutex.lock();
     /* Free internal state */
     delete kio;
 }
 
 static int Seek(access_t *obj, uint64_t pos)
 {
-    qDebug() << Q_FUNC_INFO << obj << pos;
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
-    QMutexLocker locker(&kio->m_mutex);
     QMetaObject::invokeMethod(kio, "seek", Q_ARG(uint64_t, pos));
     obj->info.b_eof = false;
-    
-    qDebug() << "end" << Q_FUNC_INFO;
     return VLC_SUCCESS;
 }
 
 static int Control(access_t *obj, int query, va_list arguments)
 {
-    qDebug() << Q_FUNC_INFO << obj << query;
-    
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
-    QMutexLocker locker(&kio->m_mutex);
     
     bool *b;
     int64_t *i;
@@ -154,11 +140,10 @@ static int Control(access_t *obj, int query, va_list arguments)
         case ACCESS_SET_SEEKPOINT:
             break;
         default:
-            qWarning() << "unimplemented query:" << query;
+            qWarning() << Q_FUNC_INFO << "unimplemented query:" << query;
             return VLC_EGENERIC;
 
     }
-    qDebug() << "end" << Q_FUNC_INFO;
     return VLC_SUCCESS;
 }
 
@@ -177,7 +162,6 @@ static block_t *Block(access_t *obj)
         kio->m_waitingForData = true;
         QMetaObject::invokeMethod(kio, "read", Q_ARG(uint64_t, 32768));
     }
-
 
     if (buffer.size() == 0)
         return NULL;
@@ -198,18 +182,17 @@ void KioPlugin::handleData(KIO::Job* job, const QByteArray& data)
 
 void KioPlugin::handlePosition(KIO::Job* job, KIO::filesize_t pos)
 {
-    qDebug() << Q_FUNC_INFO << pos;
     Q_UNUSED(job);
     m_pos = pos;
-    qDebug() << "end" << Q_FUNC_INFO;
 }
 
 void KioPlugin::handleResult(KJob* job)
 {
-    qDebug() << Q_FUNC_INFO << job << job->error();
-    Q_UNUSED(job);
+    if (job->error())
+        qWarning() << Q_FUNC_INFO << job->errorString();
+
     m_eof = true;
-    qDebug() << "end" << Q_FUNC_INFO;
+    m_launched.unlock();
 }
 
 KioPlugin::KioPlugin(): QObject()
@@ -229,14 +212,18 @@ void KioPlugin::openUrl(const QUrl& url)
     QObject::connect(m_job, SIGNAL(open(KIO::Job*)), this, SLOT(handleOpen(KIO::Job*)));
 
     m_job->addMetaData("UserAgent", QLatin1String("VLC KIO Plugin"));
-    qDebug() << "end" << Q_FUNC_INFO;
 }
 
 void KioPlugin::handleOpen(KIO::Job* job)
 {
-    qDebug() << Q_FUNC_INFO << job;
+    Q_UNUSED(job);
     m_launched.unlock();
-    qDebug() << "end" << Q_FUNC_INFO;
+}
+void KioPlugin::seek(uint64_t position)
+{
+    QMutexLocker(&m_mutex);
+    m_data.clear();
+    m_job->seek(position);
 }
 
 Q_DECLARE_METATYPE(uint64_t)

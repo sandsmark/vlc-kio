@@ -1,7 +1,7 @@
 /*****************************************************************************
  * kioplugin.cpp: An access plugin using KDE KIO.
  *****************************************************************************
- * Copyright (C) 2012 Martin Sandsmark
+ * Copyright (C) 2013 Martin Sandsmark
  *
  * Authors: Martin Sandsmark <martin.sandsmark@kde.org>
  *
@@ -47,7 +47,7 @@ public slots:
     void handleData(KIO::Job *job, const QByteArray &data);
     void handlePosition(KIO::Job *job, KIO::filesize_t pos);
     void read(uint64_t amount) { m_job->read(amount); }
-    void seek(uint64_t position) { m_data.clear(); m_job->seek(position); }
+    void seek(uint64_t position);
 
 public:
     QMutex m_mutex;
