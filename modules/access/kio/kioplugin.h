@@ -28,8 +28,10 @@
 #include <QtCore/QThread>
 #include <QtCore/QMutex>
 #include <QtCore/QSemaphore>
+#include <QtCore/QDebug>
 #include <kio/global.h>
 #include <kio/job.h>
+#include <kio/filejob.h>
 struct access_sys_t;
 class KioPlugin : public QObject
 {
@@ -40,17 +42,19 @@ public:
 public slots:
     void openUrl(const QUrl &url, void *d);
     void handleResult(KJob *job);
-    void handleOpen(KJob *job);
+    void handleOpen(KIO::Job *job);
     void handleData(KIO::Job *job, const QByteArray &data);
     void handlePosition(KIO::Job *job, KIO::filesize_t pos);
+    void read(long long amount) { m_job->read(amount); }
 
 public:
     QMutex m_mutex;
-    QSemaphore m_open;
+    QMutex m_launched;
     QByteArray m_data;
     KIO::filesize_t m_pos;
+    KIO::FileJob *m_job;
     bool m_eof;
-    QThread m_thread;
+    bool m_waitingForData;
 };
 
 #endif

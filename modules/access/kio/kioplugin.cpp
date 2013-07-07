@@ -78,24 +78,24 @@ static int Open(vlc_object_t *obj)
     access->pf_read = 0;
     access_sys_t *d = access->p_sys = new access_sys_t;
     QMutexLocker locker(&d->plugin.m_mutex);
-    d->plugin.moveToThread(&d->plugin.m_thread);
-    
-    
+
     // Construct a proper URL
-    qDebug() << access->psz_location << access->psz_access;
     QUrl url(QString::fromLocal8Bit(access->psz_access) + QLatin1String("://") + QString::fromLocal8Bit(access->psz_location));
-    
+
     qDebug() << "Opening URL: " << url;
-    
+
     // Check if we can open it
     if (!KProtocolManager::supportsOpening(url)) {
         qDebug() << "Unable to open URL.";
         delete d;
         return VLC_EGENERIC;
     }
+    d->plugin.m_launched.lock();
     QMetaObject::invokeMethod(&d->plugin, "openUrl", Q_ARG(const QUrl&, url), Q_ARG(void*, (void*)d));
-    qDebug() << "invoked";
-    
+    d->plugin.m_launched.lock();
+
+    qDebug() << "end" << Q_FUNC_INFO;
+
     return VLC_SUCCESS;
 }
 
@@ -104,6 +104,7 @@ static int Open(vlc_object_t *obj)
  */
 static void Close(vlc_object_t *obj)
 {
+    qDebug() << Q_FUNC_INFO << obj;
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
     QMutexLocker locker(&sys->plugin.m_mutex);
@@ -114,19 +115,19 @@ static void Close(vlc_object_t *obj)
 
 static int Seek(access_t *obj, uint64_t pos)
 {
-    
-    qDebug() << "seeking to" << pos;
+    qDebug() << Q_FUNC_INFO << obj << pos;
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
     QMutexLocker locker(&sys->plugin.m_mutex);
     sys->job->seek(pos);
     
+    qDebug() << "end" << Q_FUNC_INFO;
     return VLC_SUCCESS;
 }
 
 static int Control(access_t *obj, int query, va_list arguments)
 {
-    qDebug() << "control query:" << query;
+    qDebug() << Q_FUNC_INFO << obj << query;
     
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
@@ -134,19 +135,22 @@ static int Control(access_t *obj, int query, va_list arguments)
     
     Q_UNUSED(sys);
     
-    bool *b = (bool*)va_arg(arguments, bool*);
-    int64_t *i = (int64_t*)va_arg(arguments, int64_t *);
+    bool *b;
+    int64_t *i;
 
     switch(query) {
         case ACCESS_CAN_SEEK:
         case ACCESS_CAN_PAUSE:
-            *b = true;
+            b = (bool*)va_arg(arguments, bool*);
+            *b = false; // FIXME
             break;
         case ACCESS_CAN_CONTROL_PACE:
         case ACCESS_CAN_FASTSEEK:
+            b = (bool*)va_arg(arguments, bool*);
             *b = false;
             break;
         case ACCESS_GET_PTS_DELAY:
+            i = (int64_t*)va_arg(arguments, int64_t *);
             *i = 300000;//###
             break;
         case ACCESS_GET_TITLE_INFO:
@@ -163,80 +167,104 @@ static int Control(access_t *obj, int query, va_list arguments)
             return VLC_EGENERIC;
 
     }
+    qDebug() << "end" << Q_FUNC_INFO;
     return VLC_SUCCESS;
 }
 
 static block_t *Block(access_t *obj)
 {
-    
-    qDebug() << "getting block...";
+//    qDebug() << Q_FUNC_INFO << obj;
     access_t *intf = (access_t *)obj;
     access_sys_t *sys = intf->p_sys;
     QMutexLocker locker(&sys->plugin.m_mutex);
-    
+    if (sys->plugin.m_waitingForData)
+        return NULL;
+
+    const QByteArray &buffer = sys->plugin.m_data;
+
+//    qDebug() << Q_FUNC_INFO << buffer.size();
 
     if (sys->plugin.m_eof) {
         intf->info.b_eof = true;
-    } else {
-        sys->job->read(32768);
+        qDebug() << "LOLWAT";
+    } else if (buffer.size() < 32768) {
+        qDebug() << "WAITING FOR DATA ==============================";
+        sys->plugin.m_waitingForData = true;
+        QMetaObject::invokeMethod(&sys->plugin, "read", Q_ARG(long long, 32768));
+        qApp->processEvents();
     }
-    
-    const QByteArray &buffer = sys->plugin.m_data;
-    
+
+
     if (buffer.size() == 0)
         return 0;
-    
+    qDebug() << Q_FUNC_INFO << buffer.size();
+
     block_t *block = block_Alloc(buffer.size());
     memcpy(block->p_buffer, buffer.constData(), buffer.size());
+    sys->plugin.m_data.clear();
+    qDebug() << "end" << Q_FUNC_INFO;
     return block;
 }
 
 void KioPlugin::handleData(KIO::Job* job, const QByteArray& data)
 {
-    qDebug() << "getting data..." << data.size();
-    
+    qDebug() << Q_FUNC_INFO << job << data.size();
+
     QMutexLocker locker(&m_mutex);
+    qDebug() << Q_FUNC_INFO << "got mutex";
     Q_UNUSED(job);
     m_data.append(data);
+    qDebug() << "end" << Q_FUNC_INFO;
+
+    m_waitingForData = false;
+    qDebug() << "=============================== GOT DATA";
 }
 
 void KioPlugin::handlePosition(KIO::Job* job, KIO::filesize_t pos)
 {
-    qDebug() << "handling pos:" << pos;
+    qDebug() << Q_FUNC_INFO << pos;
     Q_UNUSED(job);
     m_pos = pos;
+    qDebug() << "end" << Q_FUNC_INFO;
 }
 
 void KioPlugin::handleResult(KJob* job)
 {
-    qDebug() << "got end";
+    qDebug() << Q_FUNC_INFO << job << job->error();
     Q_UNUSED(job);
     m_eof = true;
+    qDebug() << "end" << Q_FUNC_INFO;
 }
 
 KioPlugin::KioPlugin(): QObject()
 {
-    moveToThread(&m_thread);
+    qDebug() << Q_FUNC_INFO;
+    moveToThread(qApp->thread());
+    qDebug() << "end" << Q_FUNC_INFO;
 }
 
 void KioPlugin::openUrl(const QUrl& url, void* lol)
 {
     qDebug() << Q_FUNC_INFO << url;
+    m_eof = false;
+    m_waitingForData = false;
     access_sys_t *d = reinterpret_cast<access_sys_t*>(lol);
     d->job = KIO::open(url, QIODevice::ReadOnly);
+    m_job = d->job;
     QObject::connect(d->job, SIGNAL(result(KJob*)), this, SLOT(handleResult(KJob*)));
     QObject::connect(d->job, SIGNAL(data(KIO::Job*, const QByteArray&)), this, SLOT(handleData(KIO::Job*, const QByteArray&)));
-    QObject::connect(d->job, SIGNAL(position(KIO::Job*, KIO::filesize_t)), this, SLOT(handlePostion(KIO::Job*, KIO::filesize_t)));
+    QObject::connect(d->job, SIGNAL(position(KIO::Job*, KIO::filesize_t)), this, SLOT(handlePosition(KIO::Job*, KIO::filesize_t)));
     QObject::connect(d->job, SIGNAL(open(KIO::Job*)), this, SLOT(handleOpen(KIO::Job*)));
-    
+
     d->job->addMetaData("UserAgent", QLatin1String("VLC KIO Plugin"));
-    qDebug() << "returning";
     qApp->processEvents();
+    qDebug() << "end" << Q_FUNC_INFO;
 }
 
-void KioPlugin::handleOpen(KJob* job)
+void KioPlugin::handleOpen(KIO::Job* job)
 {
-    qDebug() << "open!";
-    m_open.release(1);
+    qDebug() << Q_FUNC_INFO << job;
+    m_launched.unlock();
+    qDebug() << "end" << Q_FUNC_INFO;
 }
 
