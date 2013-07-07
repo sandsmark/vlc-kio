@@ -1742,7 +1742,7 @@ dnl
 dnl KDE KIO access plugin
 dnl
 
-VLC_ADD_CXXFLAGS([access_kio],[-I/usr/include/qt4])
+VLC_ADD_CXXFLAGS([access_kio],[-I/usr/include/qt4 -I/usr/include/KDE])
 VLC_ADD_PLUGIN([access_kio])
 VLC_ADD_LIBS([access_kio],[-lkio -lQtCore -lkdecore])
 
@@ -4200,7 +4200,6 @@ AC_CONFIG_FILES([
   bin/Makefile
   test/Makefile
   modules/access/Makefile
-  modules/access/kio/Makefile
   modules/access/rtp/Makefile
   modules/access_output/Makefile
   modules/audio_filter/Makefile
