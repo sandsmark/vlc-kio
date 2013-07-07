@@ -165,12 +165,12 @@ static block_t *Block(access_t *obj)
 
     if (kio->m_eof) {
         obj->info.b_eof = true;
-    } else if (buffer.size() == 0) {
+    } else if (buffer.size() < BLOCK_SIZE) {
         // If we aren't at the end of the file, fetch more
         kio->m_waitingForData = true;
 
         // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
-        QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, 65536)); // 65536 seems to be the max we can get from kio
+        QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, BLOCK_SIZE)); // 65536 seems to be the max we can get from kio
     }
 
     if (buffer.size() == 0)
@@ -178,6 +178,10 @@ static block_t *Block(access_t *obj)
 
     block_t *block = block_Alloc(buffer.size());
     memcpy(block->p_buffer, buffer.constData(), buffer.size());
+    obj->info.i_pos += buffer.size();
+    obj->info.i_size = kio->m_job->size();
+
+
     kio->m_data.clear();
     return block;
 }
