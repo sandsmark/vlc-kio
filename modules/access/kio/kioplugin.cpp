@@ -63,6 +63,15 @@ vlc_module_end ()
 
 static int Open(vlc_object_t *obj)
 {
+    // Construct a proper URL
+    QUrl url(QString::fromLocal8Bit(access->psz_access) + QLatin1String("://") + QString::fromLocal8Bit(access->psz_location));
+
+    // Check if we can open it
+    if (!KProtocolManager::supportsOpening(url)) {
+        qWarning() << Q_FUNC_INFO << "Unable to open URL:" << url;
+        return VLC_EGENERIC;
+    }
+
     access_t *access = (access_t*)obj;
     access_InitFields(access);
     access->pf_block = Block;
@@ -72,18 +81,9 @@ static int Open(vlc_object_t *obj)
     KioPlugin *kio = new KioPlugin;
     access->p_sys = reinterpret_cast<access_sys_t*>(kio);
 
-    // Construct a proper URL
-    QUrl url(QString::fromLocal8Bit(access->psz_access) + QLatin1String("://") + QString::fromLocal8Bit(access->psz_location));
-
-    // Check if we can open it
-    if (!KProtocolManager::supportsOpening(url)) {
-        qWarning() << Q_FUNC_INFO << "Unable to open URL:" << url;
-        delete kio;
-        return VLC_EGENERIC;
-    }
     kio->m_launched.lock();
     QMetaObject::invokeMethod(kio, "openUrl", Q_ARG(const QUrl&, url));
-    kio->m_launched.lock();
+    kio->m_launched.lock(); // Wait until file is opened
 
     return VLC_SUCCESS;
 }
