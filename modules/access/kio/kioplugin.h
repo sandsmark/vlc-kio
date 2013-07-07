@@ -41,7 +41,7 @@ public:
     KioPlugin();
     
 public slots:
-    void openUrl(const QUrl &url, void *d);
+    void openUrl(const QUrl &url);
     void handleResult(KJob *job);
     void handleOpen(KIO::Job *job);
     void handleData(KIO::Job *job, const QByteArray &data);
