@@ -32,6 +32,7 @@
 #include <kio/global.h>
 #include <kio/job.h>
 #include <kio/filejob.h>
+#include <vlc_common.h>
 struct access_sys_t;
 class KioPlugin : public QObject
 {
@@ -45,7 +46,8 @@ public slots:
     void handleOpen(KIO::Job *job);
     void handleData(KIO::Job *job, const QByteArray &data);
     void handlePosition(KIO::Job *job, KIO::filesize_t pos);
-    void read(long long amount) { m_job->read(amount); }
+    void read(uint64_t amount) { m_job->read(amount); }
+    void seek(uint64_t position) { m_data.clear(); m_job->seek(position); }
 
 public:
     QMutex m_mutex;
