@@ -49,6 +49,7 @@ static int Open(vlc_object_t *);
 static void Close(vlc_object_t *);
 static int Control(access_t *, int i_query, va_list args);
 static block_t *Block(access_t *);
+static ssize_t Read(access_t*, uint8_t*, size_t);
 static int Seek(access_t *obj, uint64_t pos);
 
 // Module descriptor
@@ -76,10 +77,10 @@ static int Open(vlc_object_t *obj)
     }
 
     access_InitFields(access);
-    access->pf_block = Block;
+    access->pf_block = 0;
     access->pf_control = Control;
     access->pf_seek = Seek;
-    access->pf_read = 0;
+    access->pf_read = Read;
     KioPlugin *kio = new KioPlugin;
     access->p_sys = reinterpret_cast<access_sys_t*>(kio);
 
@@ -188,6 +189,44 @@ static block_t *Block(access_t *obj)
     kio->m_pos += kio->m_data.size();
     kio->m_data.clear();
     return block;
+}
+
+static ssize_t Read(access_t *obj, uint8_t *outbuf, size_t amount)
+{
+    KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
+    if (kio->m_waitingForData)
+        return NULL;
+
+    const QByteArray &buffer = kio->m_data;
+
+    if (kio->m_eof) {
+        obj->info.b_eof = true;
+    } else if (buffer.size() < amount) {
+        // If we aren't at the end of the file, fetch more
+        kio->m_waitingForData = true;
+
+        // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
+        QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, amount - buffer.size())); // 65536 seems to be the max we can get from kio
+        QMutex dataMutex;
+        kio->m_waitForData.wait(&dataMutex);
+    }
+
+    QMutexLocker locker(&kio->m_mutex);
+
+    if (amount > kio->m_data.size())
+        amount = kio->m_data.size();
+
+    memcpy(outbuf, buffer.constData(), amount);
+    obj->info.i_size = kio->m_job->size();
+    obj->info.i_pos = kio->m_pos;
+
+//    qDebug() << 100 * kio->m_pos / kio->m_job->size();
+
+
+    kio->m_pos += kio->m_data.size();
+//    kio->m_data.right(kio->m_data.size() - amount);
+    kio->m_data.clear();
+    return amount;
 }
 
 /************************ KIO stuffs *************************/
