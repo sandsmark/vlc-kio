@@ -150,7 +150,8 @@ static int Control(access_t*, int query, va_list arguments)
     return VLC_SUCCESS;
 }
 
-#define BLOCK_SIZE 65536
+// 65536 is the largest size KIO can get apparently, 65536/8=8192 is stolen from the sftp access plugin
+#define BLOCK_SIZE 65536/8
 
 static block_t *Block(access_t *obj)
 {
@@ -175,11 +176,13 @@ static block_t *Block(access_t *obj)
         return NULL;
 
     block_t *block = block_Alloc(buffer.size());
-    memcpy(block->p_buffer, buffer.constData(), buffer.size());
-    obj->info.i_pos += buffer.size();
+    memcpy(block->p_buffer, buffer.constData(), buffer.size() - 1);
     obj->info.i_size = kio->m_job->size();
 
+    qDebug() << 100 * kio->m_pos / kio->m_job->size();
 
+
+    kio->m_pos += kio->m_data.size();
     kio->m_data.clear();
     return block;
 }
@@ -202,6 +205,7 @@ void KioPlugin::openUrl(const QUrl& url)
 {
     m_eof = false;
     m_waitingForData = false;
+    m_pos = 0;
     m_job = KIO::open(url, QIODevice::ReadOnly);
     QObject::connect(m_job, SIGNAL(result(KJob*)), this, SLOT(handleResult(KJob*)));
     QObject::connect(m_job, SIGNAL(data(KIO::Job*, const QByteArray&)), this, SLOT(handleData(KIO::Job*, const QByteArray&)));
@@ -222,6 +226,7 @@ void KioPlugin::handleData(KIO::Job* job, const QByteArray& data)
 void KioPlugin::handlePosition(KIO::Job* job, KIO::filesize_t pos)
 {
     Q_UNUSED(job);
+    QMutexLocker locker(&m_mutex);
     m_pos = pos;
 }
 
