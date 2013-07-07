@@ -35,6 +35,7 @@ class KioPlugin : public QObject
     Q_OBJECT
 public:
     KioPlugin();
+    virtual ~KioPlugin();
     
 public slots:
     void openUrl(const QUrl &url);
@@ -42,7 +43,7 @@ public slots:
     void handleOpen(KIO::Job *job);
     void handleData(KIO::Job *job, const QByteArray &data);
     void handlePosition(KIO::Job *job, KIO::filesize_t pos);
-    void read(quint64 amount) { m_job->read(amount); }
+    void read(quint64 amount);
     void seek(quint64 position);
 
 public:

@@ -30,7 +30,6 @@
 // VLC includes
 #include <vlc_common.h>
 #include <vlc_plugin.h>
-#include <vlc_interface.h>
 #include <vlc_access.h>
 
 // Qt includes
@@ -42,6 +41,8 @@
 #include <KIO/Job>
 #include <KProtocolManager>
 #include <QtGui/QApplication>
+
+/************************ VLC stuffs *************************/
 
 // Forward declarations
 static int Open(vlc_object_t *);
@@ -63,6 +64,8 @@ vlc_module_end ()
 
 static int Open(vlc_object_t *obj)
 {
+    access_t *access = (access_t*)obj;
+
     // Construct a proper URL
     QUrl url(QString::fromLocal8Bit(access->psz_access) + QLatin1String("://") + QString::fromLocal8Bit(access->psz_location));
 
@@ -72,7 +75,6 @@ static int Open(vlc_object_t *obj)
         return VLC_EGENERIC;
     }
 
-    access_t *access = (access_t*)obj;
     access_InitFields(access);
     access->pf_block = Block;
     access->pf_control = Control;
@@ -96,14 +98,8 @@ static void Close(vlc_object_t *obj)
     access_t *intf = (access_t *)obj;
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(intf->p_sys);
 
-    // Stop and delete job
-    kio->m_job->kill();
-
-    // Make sure noone is doing anything
-    kio->m_mutex.lock();
-
     // Delete everything
-    delete kio;
+    kio->deleteLater();
 }
 
 static int Seek(access_t *obj, uint64_t pos)
@@ -113,6 +109,7 @@ static int Seek(access_t *obj, uint64_t pos)
     // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
     QMetaObject::invokeMethod(kio, "seek", Q_ARG(quint64, pos));
     obj->info.b_eof = false;
+    obj->info.i_pos = pos;
     return VLC_SUCCESS;
 }
 
@@ -153,6 +150,8 @@ static int Control(access_t*, int query, va_list arguments)
     return VLC_SUCCESS;
 }
 
+#define BLOCK_SIZE 65536
+
 static block_t *Block(access_t *obj)
 {
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
@@ -162,13 +161,16 @@ static block_t *Block(access_t *obj)
 
     const QByteArray &buffer = kio->m_data;
 
+    qDebug() << "buffer size" << buffer.size();
+
     if (kio->m_eof) {
         obj->info.b_eof = true;
-    } else if (buffer.size() < 32768) { // Fetch more data if running low
+    } else if (buffer.size() == 0) {
+        // If we aren't at the end of the file, fetch more
         kio->m_waitingForData = true;
 
         // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
-        QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, 32768));
+        QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, 65536)); // 65536 seems to be the max we can get from kio
     }
 
     if (buffer.size() == 0)
@@ -180,8 +182,36 @@ static block_t *Block(access_t *obj)
     return block;
 }
 
+/************************ KIO stuffs *************************/
+
+KioPlugin::KioPlugin(): QObject()
+{
+    // KIO only supports being called from the main Qt thread
+    moveToThread(qApp->thread());
+}
+
+KioPlugin::~KioPlugin()
+{
+    m_job->kill();
+}
+
+
+void KioPlugin::openUrl(const QUrl& url)
+{
+    m_eof = false;
+    m_waitingForData = false;
+    m_job = KIO::open(url, QIODevice::ReadOnly);
+    QObject::connect(m_job, SIGNAL(result(KJob*)), this, SLOT(handleResult(KJob*)));
+    QObject::connect(m_job, SIGNAL(data(KIO::Job*, const QByteArray&)), this, SLOT(handleData(KIO::Job*, const QByteArray&)));
+    QObject::connect(m_job, SIGNAL(position(KIO::Job*, KIO::filesize_t)), this, SLOT(handlePosition(KIO::Job*, KIO::filesize_t)));
+    QObject::connect(m_job, SIGNAL(open(KIO::Job*)), this, SLOT(handleOpen(KIO::Job*)));
+
+    m_job->addMetaData("UserAgent", QLatin1String("VLC KIO Plugin"));
+}
+
 void KioPlugin::handleData(KIO::Job* job, const QByteArray& data)
 {
+    qDebug() << Q_FUNC_INFO << data.size();
     Q_UNUSED(job);
     QMutexLocker locker(&m_mutex);
     m_data.append(data);
@@ -203,25 +233,6 @@ void KioPlugin::handleResult(KJob* job)
     m_launched.unlock();
 }
 
-KioPlugin::KioPlugin(): QObject()
-{
-    // KIO only supports being called from the main Qt thread
-    moveToThread(qApp->thread());
-}
-
-void KioPlugin::openUrl(const QUrl& url)
-{
-    m_eof = false;
-    m_waitingForData = false;
-    m_job = KIO::open(url, QIODevice::ReadOnly);
-    QObject::connect(m_job, SIGNAL(result(KJob*)), this, SLOT(handleResult(KJob*)));
-    QObject::connect(m_job, SIGNAL(data(KIO::Job*, const QByteArray&)), this, SLOT(handleData(KIO::Job*, const QByteArray&)));
-    QObject::connect(m_job, SIGNAL(position(KIO::Job*, KIO::filesize_t)), this, SLOT(handlePosition(KIO::Job*, KIO::filesize_t)));
-    QObject::connect(m_job, SIGNAL(open(KIO::Job*)), this, SLOT(handleOpen(KIO::Job*)));
-
-    m_job->addMetaData("UserAgent", QLatin1String("VLC KIO Plugin"));
-}
-
 void KioPlugin::handleOpen(KIO::Job* job)
 {
     Q_UNUSED(job);
@@ -235,4 +246,10 @@ void KioPlugin::seek(quint64 position)
     m_data.clear();
 
     m_job->seek(position);
+}
+
+void KioPlugin::read(quint64 amount)
+{
+    qDebug() << Q_FUNC_INFO << amount;
+    m_job->read(amount);
 }
