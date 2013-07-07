@@ -161,8 +161,6 @@ static block_t *Block(access_t *obj)
 
     const QByteArray &buffer = kio->m_data;
 
-    qDebug() << "buffer size" << buffer.size();
-
     if (kio->m_eof) {
         obj->info.b_eof = true;
     } else if (buffer.size() < BLOCK_SIZE) {
@@ -215,7 +213,6 @@ void KioPlugin::openUrl(const QUrl& url)
 
 void KioPlugin::handleData(KIO::Job* job, const QByteArray& data)
 {
-    qDebug() << Q_FUNC_INFO << data.size();
     Q_UNUSED(job);
     QMutexLocker locker(&m_mutex);
     m_data.append(data);
@@ -254,6 +251,5 @@ void KioPlugin::seek(quint64 position)
 
 void KioPlugin::read(quint64 amount)
 {
-    qDebug() << Q_FUNC_INFO << amount;
     m_job->read(amount);
 }
