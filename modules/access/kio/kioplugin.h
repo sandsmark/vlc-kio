@@ -27,6 +27,7 @@
 #include <QtCore/QByteArray>
 #include <QtCore/QMutex>
 #include <QtCore/QUrl>
+#include <QtCore/QWaitCondition>
 
 #include <KIO/FileJob>
 
@@ -54,6 +55,7 @@ public:
     KIO::FileJob *m_job;
     bool m_eof;
     bool m_waitingForData;
+    QWaitCondition m_waitForData;
 };
 
 #endif

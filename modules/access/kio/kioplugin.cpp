@@ -156,7 +156,6 @@ static int Control(access_t*, int query, va_list arguments)
 static block_t *Block(access_t *obj)
 {
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
-    QMutexLocker locker(&kio->m_mutex);
     if (kio->m_waitingForData)
         return NULL;
 
@@ -170,16 +169,20 @@ static block_t *Block(access_t *obj)
 
         // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
         QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, BLOCK_SIZE)); // 65536 seems to be the max we can get from kio
+        QMutex dataMutex;
+        kio->m_waitForData.wait(&dataMutex);
     }
 
+    QMutexLocker locker(&kio->m_mutex);
     if (buffer.size() == 0)
         return NULL;
 
     block_t *block = block_Alloc(buffer.size());
     memcpy(block->p_buffer, buffer.constData(), buffer.size() - 1);
     obj->info.i_size = kio->m_job->size();
+    obj->info.i_pos = kio->m_pos;
 
-    qDebug() << 100 * kio->m_pos / kio->m_job->size();
+//    qDebug() << 100 * kio->m_pos / kio->m_job->size();
 
 
     kio->m_pos += kio->m_data.size();
@@ -221,6 +224,7 @@ void KioPlugin::handleData(KIO::Job* job, const QByteArray& data)
     QMutexLocker locker(&m_mutex);
     m_data.append(data);
     m_waitingForData = false;
+    m_waitForData.wakeAll();
 }
 
 void KioPlugin::handlePosition(KIO::Job* job, KIO::filesize_t pos)
