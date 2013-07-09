@@ -84,9 +84,7 @@ static int Open(vlc_object_t *obj)
     KioPlugin *kio = new KioPlugin;
     access->p_sys = reinterpret_cast<access_sys_t*>(kio);
 
-    kio->m_launched.lock();
-    QMetaObject::invokeMethod(kio, "openUrl", Q_ARG(const QUrl&, url));
-    kio->m_launched.lock(); // Wait until file is opened
+    QMetaObject::invokeMethod(kio, "openUrl", Qt::BlockingQueuedConnection, Q_ARG(const QUrl&, url));
 
     return VLC_SUCCESS;
 }
@@ -157,6 +155,8 @@ static int Control(access_t*, int query, va_list arguments)
 static block_t *Block(access_t *obj)
 {
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
+    QMutexLocker locker(&kio->m_mutex);
+
     if (kio->m_waitingForData)
         return NULL;
 
@@ -167,14 +167,13 @@ static block_t *Block(access_t *obj)
     } else if (buffer.size() < BLOCK_SIZE) {
         // If we aren't at the end of the file, fetch more
         kio->m_waitingForData = true;
-
+        locker.unlock();
         // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
         QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, BLOCK_SIZE)); // 65536 seems to be the max we can get from kio
-        QMutex dataMutex;
-        kio->m_waitForData.wait(&dataMutex);
+        kio->m_waitForData.wait(&kio->m_waitForDataMutex);
+        locker.relock();
     }
 
-    QMutexLocker locker(&kio->m_mutex);
     if (buffer.size() == 0)
         return NULL;
 
@@ -194,8 +193,11 @@ static block_t *Block(access_t *obj)
 static ssize_t Read(access_t *obj, uint8_t *outbuf, size_t amount)
 {
     KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
+    QMutexLocker locker(&kio->m_mutex);
+
     if (kio->m_waitingForData)
-        return NULL;
+        return 0;
+
 
     const QByteArray &buffer = kio->m_data;
 
@@ -204,14 +206,13 @@ static ssize_t Read(access_t *obj, uint8_t *outbuf, size_t amount)
     } else if (buffer.size() < amount) {
         // If we aren't at the end of the file, fetch more
         kio->m_waitingForData = true;
-
+        locker.unlock();
         // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
         QMetaObject::invokeMethod(kio, "read", Q_ARG(quint64, amount - buffer.size())); // 65536 seems to be the max we can get from kio
-        QMutex dataMutex;
-        kio->m_waitForData.wait(&dataMutex);
+        kio->m_waitForData.wait(&kio->m_waitForDataMutex);
+        locker.relock();
     }
 
-    QMutexLocker locker(&kio->m_mutex);
 
     if (amount > kio->m_data.size())
         amount = kio->m_data.size();
@@ -231,7 +232,8 @@ static ssize_t Read(access_t *obj, uint8_t *outbuf, size_t amount)
 
 /************************ KIO stuffs *************************/
 
-KioPlugin::KioPlugin(): QObject()
+KioPlugin::KioPlugin(): QObject(),
+    m_job(0)
 {
     // KIO only supports being called from the main Qt thread
     moveToThread(qApp->thread());
@@ -239,7 +241,8 @@ KioPlugin::KioPlugin(): QObject()
 
 KioPlugin::~KioPlugin()
 {
-    m_job->kill();
+    if (m_job)
+        m_job->close(); // this gets auto-deleted
 }
 
 
@@ -279,13 +282,11 @@ void KioPlugin::handleResult(KJob* job)
         qWarning() << Q_FUNC_INFO << job->errorString();
 
     m_eof = true;
-    m_launched.unlock();
 }
 
 void KioPlugin::handleOpen(KIO::Job* job)
 {
     Q_UNUSED(job);
-    m_launched.unlock();
 }
 void KioPlugin::seek(quint64 position)
 {

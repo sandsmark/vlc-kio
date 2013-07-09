@@ -49,7 +49,7 @@ public slots:
 
 public:
     QMutex m_mutex;
-    QMutex m_launched;
+    QMutex m_waitForDataMutex;
     QByteArray m_data;
     KIO::filesize_t m_pos;
     KIO::FileJob *m_job;
