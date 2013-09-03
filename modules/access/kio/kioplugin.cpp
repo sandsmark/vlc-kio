@@ -55,12 +55,11 @@ static int Seek(access_t *obj, uint64_t pos);
 // Module descriptor
 vlc_module_begin()
     set_shortname(N_("KIO"))
-    set_description(N_("KIO access module"))
-    set_capability("access", 600)
+    set_description(N_("KDE KIO access module"))
+    set_capability("access", 20)
     set_callbacks(Open, Close)
     set_category(CAT_INPUT)
     set_subcategory(SUBCAT_INPUT_ACCESS)
-    add_shortcut("sftp")
 vlc_module_end ()
 
 static int Open(vlc_object_t *obj)
@@ -72,7 +71,6 @@ static int Open(vlc_object_t *obj)
 
     // Check if we can open it
     if (!KProtocolManager::supportsOpening(url)) {
-        qWarning() << Q_FUNC_INFO << "Unable to open URL:" << url;
         return VLC_EGENERIC;
     }
 
@@ -90,7 +88,7 @@ static int Open(vlc_object_t *obj)
 }
 
 /**
- * Stops the interface. 
+ * Stops the interface.
  */
 static void Close(vlc_object_t *obj)
 {
@@ -149,7 +147,8 @@ static int Control(access_t*, int query, va_list arguments)
     return VLC_SUCCESS;
 }
 
-// 65536 is the largest size KIO can get apparently, 65536/8=8192 is stolen from the sftp access plugin
+// 65536 is the largest size KIO can get apparently (maximum jumbo packet size?),
+// 65536/8=8192 is stolen from the sftp access plugin
 #define BLOCK_SIZE 65536/8
 
 static block_t *Block(access_t *obj)
@@ -182,9 +181,6 @@ static block_t *Block(access_t *obj)
     obj->info.i_size = kio->m_job->size();
     obj->info.i_pos = kio->m_pos;
 
-//    qDebug() << 100 * kio->m_pos / kio->m_job->size();
-
-
     kio->m_pos += kio->m_data.size();
     kio->m_data.clear();
     return block;
@@ -197,7 +193,6 @@ static ssize_t Read(access_t *obj, uint8_t *outbuf, size_t amount)
 
     if (kio->m_waitingForData)
         return 0;
-
 
     const QByteArray &buffer = kio->m_data;
 
@@ -213,7 +208,6 @@ static ssize_t Read(access_t *obj, uint8_t *outbuf, size_t amount)
         locker.relock();
     }
 
-
     if (amount > kio->m_data.size())
         amount = kio->m_data.size();
 
@@ -221,11 +215,7 @@ static ssize_t Read(access_t *obj, uint8_t *outbuf, size_t amount)
     obj->info.i_size = kio->m_job->size();
     obj->info.i_pos = kio->m_pos;
 
-//    qDebug() << 100 * kio->m_pos / kio->m_job->size();
-
-
     kio->m_pos += kio->m_data.size();
-//    kio->m_data.right(kio->m_data.size() - amount);
     kio->m_data.clear();
     return amount;
 }
@@ -257,7 +247,7 @@ void KioPlugin::openUrl(const QUrl& url)
     QObject::connect(m_job, SIGNAL(position(KIO::Job*, KIO::filesize_t)), this, SLOT(handlePosition(KIO::Job*, KIO::filesize_t)));
     QObject::connect(m_job, SIGNAL(open(KIO::Job*)), this, SLOT(handleOpen(KIO::Job*)));
 
-    m_job->addMetaData("UserAgent", QLatin1String("VLC KIO Plugin"));
+    m_job->addMetaData("UserAgent", QLatin1String("VLC/"PACKAGE_VERSION" LibVLC/"PACKAGE_VERSION));
 }
 
 void KioPlugin::handleData(KIO::Job* job, const QByteArray& data)
