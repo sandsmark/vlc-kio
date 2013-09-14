@@ -60,6 +60,7 @@ vlc_module_begin()
     set_callbacks(Open, Close)
     set_category(CAT_INPUT)
     set_subcategory(SUBCAT_INPUT_ACCESS)
+    add_shortcut("sftp")
 vlc_module_end ()
 
 static int Open(vlc_object_t *obj)
@@ -277,6 +278,7 @@ void KioPlugin::handleResult(KJob* job)
 void KioPlugin::handleOpen(KIO::Job* job)
 {
     Q_UNUSED(job);
+    read(1);
 }
 void KioPlugin::seek(quint64 position)
 {
