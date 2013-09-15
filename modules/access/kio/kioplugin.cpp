@@ -79,7 +79,6 @@ static int Open(vlc_object_t *obj)
     access->pf_block = 0;
     access->pf_control = Control;
     access->pf_seek = Seek;
-//    access->pf_read = Read;
     access->pf_block = Block;
     KioPlugin *kio = new KioPlugin;
     access->p_sys = reinterpret_cast<access_sys_t*>(kio);
@@ -175,10 +174,11 @@ static block_t *Block(access_t *obj)
         return NULL;
     }
 
-    timespec tim;
-    tim.tv_sec = 0;
-    tim.tv_nsec = 250000000L;
-    nanosleep(&tim, &tim);
+    // Sleeping makes it almost smooth, for some reason
+//    timespec tim;
+//    tim.tv_sec = 0;
+//    tim.tv_nsec = 250000000L;
+//    nanosleep(&tim, &tim);
 
     block_t *block = block_Alloc(BLOCK_SIZE);
     memcpy(block->p_buffer, buffer.constData(), BLOCK_SIZE);
@@ -188,38 +188,6 @@ static block_t *Block(access_t *obj)
     kio->m_pos += BLOCK_SIZE;
     kio->m_data = kio->m_data.right(kio->m_data.size() - BLOCK_SIZE);
     return block;
-}
-
-static ssize_t Read(access_t *obj, uint8_t *outbuf, size_t amount)
-{
-    KioPlugin *kio = reinterpret_cast<KioPlugin*>(obj->p_sys);
-    QMutexLocker locker(&kio->m_mutex);
-
-    if (kio->m_waitingForData)
-        return 0;
-
-    const QByteArray &buffer = kio->m_data;
-
-    if (kio->m_eof) {
-        obj->info.b_eof = true;
-    } else if (buffer.size() < amount) {
-        // If we aren't at the end of the file, fetch more
-        locker.unlock();
-        // Invoke this via the meta object to make sure it is in the right thread (KIO is not threadsafe)
-        QMetaObject::invokeMethod(kio, "read", Qt::BlockingQueuedConnection, Q_ARG(quint64, amount - buffer.size())); // 65536 seems to be the max we can get from kio
-        locker.relock();
-    }
-
-    if (amount > kio->m_data.size())
-        amount = kio->m_data.size();
-
-    memcpy(outbuf, buffer.constData(), amount);
-    obj->info.i_size = kio->m_job->size();
-    obj->info.i_pos = kio->m_pos;
-
-    kio->m_pos += kio->m_data.size();
-    kio->m_data.clear();
-    return amount;
 }
 
 /************************ KIO stuffs *************************/
