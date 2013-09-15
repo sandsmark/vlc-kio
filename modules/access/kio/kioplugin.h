@@ -56,6 +56,7 @@ public:
     bool m_eof;
     bool m_waitingForData;
     QWaitCondition m_waitForData;
+    quint64 m_requested;
 };
 
 #endif
